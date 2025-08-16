@@ -7,7 +7,8 @@ struct AcceptedSocket{
     int success;
 };
 
-void receiveDataFromClient(const int clientFD){
+void* receiveDataFromClient(void* arg){
+    int clientFD=*((int*)arg);
     char buffer[1024];
     while(1){
         ssize_t b_recv=recv(clientFD,buffer,sizeof(buffer),0);
@@ -18,6 +19,7 @@ void receiveDataFromClient(const int clientFD){
         if(b_recv==0)
             break;
     }
+    close(clientFD);
 }
 
 struct AcceptedSocket* acceptIncomingConnection(const int serverFD){
@@ -34,8 +36,19 @@ struct AcceptedSocket* acceptIncomingConnection(const int serverFD){
     if(acceptedSocket->success==0)
         acceptedSocket->error=clientFD;
 
-    receiveDataFromClient(acceptedSocket->FD);
     return acceptedSocket;
+}
+
+void receiveDataFromClientOnSeparateThread(struct AcceptedSocket* acceptedSocket){
+    pthread_t id;
+    pthread_create(&id,NULL,receiveDataFromClient,(void*)&acceptedSocket->FD);
+}
+
+void threadingMultipleClients(const int serverFD){
+    while(1){
+        struct AcceptedSocket* acceptedSocket=acceptIncomingConnection(serverFD);
+        receiveDataFromClientOnSeparateThread(acceptedSocket);
+    }
 }
 
 int main(){
@@ -46,9 +59,8 @@ int main(){
         printf("successfully bound\n");
     if(listen(serverFD,10)==-1)
         printf("listen error\n");
-    struct AcceptedSocket* clientStruct=acceptIncomingConnection(serverFD);
+    threadingMultipleClients(serverFD);
 
-    close(clientStruct->FD);
     shutdown(serverFD,SHUT_RDWR);
     return 0;
 }
